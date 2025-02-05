@@ -33,3 +33,17 @@ int start_server() {
   printf("Server listening on port %d...\n", PORT);
   return server_fd;
 }
+
+int accept_client(int server_fd) {
+  struct sockaddr_in client_addr;
+  socklen_t addr_len = sizeof(client_addr);
+
+  int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &addr_len);
+  if (client_fd < 0) {
+    perror("Client accept failed");
+  } else {
+    printf("New client connected!\n");
+  }
+
+  return client_fd;
+}
