@@ -4,9 +4,8 @@ LIBS = -lssl -lcrypto
 
 all: server run
 
-
-server: main.o server.o websocket.o utils.o
-	$(CC) $(CFLAGS) -o server main.o server.o websocket.o utils.o $(LIBS)
+server: main.o server.o websocket.o websocket_frame.o utils.o
+	$(CC) $(CFLAGS) -o server main.o server.o websocket.o websocket_frame.o utils.o $(LIBS)
 
 run:
 	./server
