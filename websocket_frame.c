@@ -172,3 +172,40 @@ void ws_frame_free(ws_frame_t *frame) {
     }
 }
 
+ws_frame_t* ws_frame_create(bool fin, uint8_t opcode, 
+                           const uint8_t *payload, 
+                           uint64_t payload_length, 
+                           bool masked) {
+    ws_frame_t *frame = (ws_frame_t *)malloc(sizeof(ws_frame_t));
+    if (!frame) {
+        perror("Failed to allocate memory for WebSocket frame");
+        return NULL;
+    }
+    
+    frame->fin = fin;
+    frame->opcode = opcode;
+    frame->masked = masked;
+    frame->payload_length = payload_length;
+    
+    // Generate random masking key if needed
+    if (masked) {
+        for (int i = 0; i < 4; i++) {
+            frame->masking_key[i] = rand() & 0xFF;
+        }
+    }
+    
+    // Copy payload
+    if (payload_length > 0 && payload) {
+        frame->payload = (uint8_t *)malloc(payload_length);
+        if (!frame->payload) {
+            perror("Failed to allocate memory for payload");
+            free(frame);
+            return NULL;
+        }
+        memcpy(frame->payload, payload, payload_length);
+    } else {
+        frame->payload = NULL;
+    }
+    
+    return frame;
+} 
