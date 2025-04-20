@@ -94,3 +94,73 @@ int ws_frame_read(int client_fd, ws_frame_t *frame) {
     
     return 0;
 }
+
+int ws_frame_write(int client_fd, ws_frame_t *frame) {
+    if (!frame) return -1;
+    
+    // Prepare header
+    uint8_t header[14]; // Max header size (2 + 8 + 4)
+    size_t header_size = 2;
+    
+    // First byte: FIN bit + opcode
+    header[0] = (frame->fin ? 0x80 : 0x00) | (frame->opcode & 0x0F);
+    
+    // Second byte: MASK bit + payload length
+    if (frame->payload_length < 126) {
+        header[1] = (frame->masked ? 0x80 : 0x00) | (frame->payload_length & 0x7F);
+    } else if (frame->payload_length <= 0xFFFF) {
+        header[1] = (frame->masked ? 0x80 : 0x00) | 126;
+        uint16_t len16 = htons((uint16_t)frame->payload_length);
+        memcpy(&header[2], &len16, 2);
+        header_size += 2;
+    } else {
+        header[1] = (frame->masked ? 0x80 : 0x00) | 127;
+        uint64_t len64 = htobe64(frame->payload_length);
+        memcpy(&header[2], &len64, 8);
+        header_size += 8;
+    }
+    
+    // Add masking key if needed
+    if (frame->masked) {
+        memcpy(&header[header_size], frame->masking_key, 4);
+        header_size += 4;
+    }
+    
+    // Write header
+    if (write(client_fd, header, header_size) != (ssize_t)header_size) {
+        perror("Failed to write WebSocket frame header");
+        return -1;
+    }
+    
+    // Write payload
+    if (frame->payload_length > 0 && frame->payload) {
+        uint8_t *payload_to_send = frame->payload;
+        uint8_t *masked_payload = NULL;
+        
+        // If masked, create a copy of the payload and mask it
+        if (frame->masked) {
+            masked_payload = (uint8_t *)malloc(frame->payload_length);
+            if (!masked_payload) {
+                perror("Failed to allocate memory for masked payload");
+                return -1;
+            }
+            memcpy(masked_payload, frame->payload, frame->payload_length);
+            for (uint64_t i = 0; i < frame->payload_length; i++) {
+                masked_payload[i] ^= frame->masking_key[i % 4];
+            }
+            payload_to_send = masked_payload;
+        }
+        
+        // Write payload
+        if (write(client_fd, payload_to_send, frame->payload_length) != 
+                (ssize_t)frame->payload_length) {
+            perror("Failed to write WebSocket frame payload");
+            if (masked_payload) free(masked_payload);
+            return -1;
+        }
+        
+        if (masked_payload) free(masked_payload);
+    }
+    
+    return 0;
+}
