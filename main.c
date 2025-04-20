@@ -81,16 +81,75 @@ void handle_client_data(int client_fd) {
 }
 
 int main() {
-  int server_fd = start_server();
-
-  while (1) {
-    int client_fd = accept_client(server_fd);
-    if (client_fd > 0) {
-      handle_websocket_handshake(client_fd);
-      close(client_fd);
+    signal(SIGINT, handle_signal);
+    signal(SIGTERM, handle_signal);
+    
+    int server_fd = start_server();
+    
+    fd_set master_set, read_fds;
+    FD_ZERO(&master_set);
+    FD_SET(server_fd, &master_set);
+    
+    int max_fd = server_fd;
+    
+    printf("WebSocket server started. Press Ctrl+C to stop.\n");
+    
+    while (running) {
+        read_fds = master_set;
+        
+        struct timeval timeout = {1, 0};
+        int activity = select(max_fd + 1, &read_fds, NULL, NULL, &timeout);
+        
+        if (activity < 0) {
+            perror("Select error");
+            break;
+        }
+        
+        if (FD_ISSET(server_fd, &read_fds)) {
+            int client_fd = accept_client(server_fd);
+            if (client_fd > 0) {
+                FD_SET(client_fd, &master_set);
+                if (client_fd > max_fd) {
+                    max_fd = client_fd;
+                }
+                printf("Client added to active set\n");
+            }
+        }
+        
+        for (int fd = 0; fd <= max_fd; fd++) {
+            if (fd == server_fd || !FD_ISSET(fd, &read_fds)) {
+                continue;
+            }
+            
+            char peek_buf[1];
+            if (recv(fd, peek_buf, 1, MSG_PEEK) <= 0) {
+                printf("Client %d disconnected\n", fd);
+                close(fd);
+                FD_CLR(fd, &master_set);
+            }
+            else if (peek_buf[0] == 'G') {
+                if (handle_websocket_handshake(fd) != 0) {
+                    printf("WebSocket handshake failed for client %d\n", fd);
+                    close(fd);
+                    FD_CLR(fd, &master_set);
+                } else {
+                    printf("WebSocket handshake successful for client %d\n", fd);
+                }
+            }
+            else {
+                handle_client_data(fd);
+            }
+        }
     }
-  }
-
-  close(server_fd);
-  return 0;
+    
+    printf("Shutting down server...\n");
+    
+    for (int fd = 0; fd <= max_fd; fd++) {
+        if (fd != server_fd && FD_ISSET(fd, &master_set)) {
+            close(fd);
+        }
+    }
+    
+    close(server_fd);
+    return 0;
 }
