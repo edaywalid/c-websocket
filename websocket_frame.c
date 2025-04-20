@@ -164,3 +164,11 @@ int ws_frame_write(int client_fd, ws_frame_t *frame) {
     
     return 0;
 }
+
+void ws_frame_free(ws_frame_t *frame) {
+    if (frame && frame->payload) {
+        free(frame->payload);
+        frame->payload = NULL;
+    }
+}
+
